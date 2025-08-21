@@ -18,4 +18,33 @@ Part-of-Speech Tagging: Analyzing the frequency of different parts of speech (e.
 Sentence and Word Length: Calculating the average sentence and word length
 
 
-**
+**How have the semantic meanings of cognitive and emotional terms evolved over time?**
+1. Research Question
+How have the semantic meanings of cognitive and emotional terms evolved over time?
+
+Do these terms follow the established statistical laws of semantic change (Law of Conformity and Law of Innovation)?
+
+2. Hypothesis
+Hypothesis 1: The rate of semantic change for cognitive and emotional terms will be negatively correlated with their word frequency (Law of Conformity).
+
+Hypothesis 2: The rate of semantic change for these terms will be positively correlated with their degree of polysemy (Law of Innovation).
+
+Novel Hypothesis: The semantic trajectories of these abstract terms may diverge from general vocabulary, showing more significant shifts in response to major cultural, philosophical, or scientific developments.
+
+3. Dataset
+Source: HistWords project's pre-trained historical word embeddings.
+
+Corpus: Derived from the Corpus of Historical American English (COHA).
+
+Data: English embeddings spanning 150 years, pre-aligned across decades.
+
+4. Methods
+Term Curation: Select a list of 20-30 cognitive and emotional terms (e.g., reason, intuition, consciousness, anxiety, joy).
+
+Semantic Change Calculation: For each term, compute the cosine distance between its vector embeddings in successive decades using a Python script.
+
+Feature Extraction: Calculate word frequency and a measure of polysemy for each term from the corpus.
+
+Statistical Analysis: Perform a statistical analysis (e.g., correlation, regression) to test the hypotheses by correlating the rate of semantic change with frequency and polysemy.
+
+Visualization: Use libraries like matplotlib to plot the semantic change of key terms over time.
