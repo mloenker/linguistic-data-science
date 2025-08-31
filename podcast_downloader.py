@@ -9,6 +9,8 @@ from pathlib import Path
 import json
 from datetime import datetime
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 class PodcastDownloader:
     def __init__(self, csv_file, download_dir="data", rate_limit=1.0):
@@ -20,6 +22,8 @@ class PodcastDownloader:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
+        self.progress_lock = threading.Lock()
+        self.overall_progress = None
         
     def load_podcasts_from_csv(self):
         """Load podcast data from CSV file"""
@@ -134,7 +138,7 @@ class PodcastDownloader:
             filename = f"{title}{file_ext}"
             file_path = podcast_dir / filename
             
-            # Skip if already downloaded
+            # Skip if already downloaded (no rate limit needed)
             if file_path.exists():
                 if progress_bar:
                     progress_bar.set_description(f"Skipping: {filename[:50]}...")
@@ -149,7 +153,7 @@ class PodcastDownloader:
             
             # Save the file
             with open(file_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
+                for chunk in response.iter_content(chunk_size=1024*1024):  # 1MB chunks
                     f.write(chunk)
             
             # Save episode metadata
@@ -176,8 +180,50 @@ class PodcastDownloader:
             print(f"Error downloading episode {episode.get('title', 'Unknown')}: {str(e)}")
             return False
     
-    def download_all_podcasts(self, start_from_podcast=0):
-        """Download episodes from all podcasts with progress tracking"""
+    def download_podcast_episodes(self, podcast_data):
+        """Download all episodes for a single podcast"""
+        podcast, expected_episodes = podcast_data
+        podcast_name = podcast['name']
+        
+        # Create individual progress bar for this podcast
+        podcast_progress = tqdm(total=expected_episodes, desc=f"{podcast_name[:30]}", 
+                              unit="ep", position=None, leave=True)
+        
+        # Fetch episodes from RSS
+        episodes = self.fetch_rss_feed(podcast['rss_url'])
+        
+        if not episodes:
+            podcast_progress.close()
+            return 0, expected_episodes
+        
+        # Update the total if it differs from expected
+        if len(episodes) != expected_episodes:
+            podcast_progress.total = len(episodes)
+            podcast_progress.refresh()
+        
+        # Download episodes for this podcast
+        podcast_downloaded = 0
+        for episode in episodes:
+            success = self.download_episode(episode, podcast_name)
+            if success:
+                podcast_downloaded += 1
+            
+            # Update both progress bars
+            podcast_progress.update(1)
+            if self.overall_progress:
+                with self.progress_lock:
+                    self.overall_progress.update(1)
+            
+            # Only apply rate limit when actually downloading (not for skipped files)
+            file_path = self.download_dir / self.sanitize_filename(podcast_name) / f"{self.sanitize_filename(episode['title'])}.mp3"
+            if not file_path.exists():  # Only rate limit for actual downloads
+                time.sleep(self.rate_limit)
+        
+        podcast_progress.close()
+        return podcast_downloaded, len(episodes)
+
+    def download_all_podcasts(self, start_from_podcast=0, max_workers=3):
+        """Download episodes from all podcasts with parallel processing"""
         podcasts = self.load_podcasts_from_csv()
         print(f"Found {len(podcasts)} podcasts with RSS feeds")
         
@@ -187,47 +233,38 @@ class PodcastDownloader:
         # Show size estimation and proceed automatically
         estimated_size_gb = total_episodes * 50 / 1024  # Rough estimate: 50MB per episode
         print(f"\nEstimated total download size: ~{estimated_size_gb:.1f} GB")
-        print("\nProceeding with download automatically...")
+        print(f"\nProceeding with download using {max_workers} parallel threads...")
         
         print("\nStarting downloads...")
         total_downloaded = 0
         
         # Create overall progress bar
-        overall_progress = tqdm(total=total_episodes, desc="Overall Progress", unit="episodes")
+        self.overall_progress = tqdm(total=total_episodes, desc="Overall Progress", 
+                                   unit="ep", position=0, leave=True)
         
-        for i, podcast in enumerate(podcasts[start_from_podcast:], start_from_podcast):
-            podcast_name = podcast['name']
-            expected_episodes = podcast_episode_counts.get(podcast_name, 0)
-            
-            print(f"\nProcessing podcast {i+1}/{len(podcasts)}: {podcast_name}")
-            print(f"Expected episodes: {expected_episodes}")
-            
-            # Fetch episodes from RSS (again, but cached data would be better)
-            episodes = self.fetch_rss_feed(podcast['rss_url'])
-            
-            if not episodes:
-                print(f"No episodes found for {podcast_name}")
-                overall_progress.update(expected_episodes)  # Update progress even if no episodes
-                continue
-            
-            # Download episodes with podcast-specific progress bar
-            podcast_progress = tqdm(episodes, desc=f"{podcast_name[:30]}", leave=False, unit="ep")
-            
-            podcast_downloaded = 0
-            for episode in podcast_progress:
-                if self.download_episode(episode, podcast_name, podcast_progress):
-                    podcast_downloaded += 1
-                    total_downloaded += 1
-                
-                overall_progress.update(1)
-                
-                # Rate limiting
-                time.sleep(self.rate_limit)
-            
-            podcast_progress.close()
-            print(f"Downloaded {podcast_downloaded}/{len(episodes)} episodes for {podcast_name}")
+        # Prepare podcast data for parallel processing
+        podcast_data_list = [(podcast, podcast_episode_counts.get(podcast['name'], 0)) 
+                            for podcast in podcasts[start_from_podcast:]]
         
-        overall_progress.close()
+        # Use ThreadPoolExecutor for parallel podcast downloads
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all podcast download tasks
+            future_to_podcast = {
+                executor.submit(self.download_podcast_episodes, podcast_data): podcast_data[0]['name']
+                for podcast_data in podcast_data_list
+            }
+            
+            # Process completed tasks
+            for future in as_completed(future_to_podcast):
+                podcast_name = future_to_podcast[future]
+                try:
+                    podcast_downloaded, total_episodes_in_podcast = future.result()
+                    total_downloaded += podcast_downloaded
+                    print(f"Completed {podcast_name}: {podcast_downloaded}/{total_episodes_in_podcast} episodes")
+                except Exception as e:
+                    print(f"Error processing {podcast_name}: {str(e)}")
+        
+        self.overall_progress.close()
         
         print(f"\n{'='*60}")
         print(f"Download complete! Total episodes downloaded: {total_downloaded}/{total_episodes}")
@@ -256,7 +293,7 @@ if __name__ == "__main__":
     # Configuration
     csv_file = "top_german_podcasts_full_updated.csv"
     download_dir = "data"
-    rate_limit = 1.0  # seconds between requests
+    rate_limit = 0.3  # seconds between requests
     
     # Create downloader
     downloader = PodcastDownloader(csv_file, download_dir, rate_limit)
