@@ -120,6 +120,7 @@ cython_debug/
 
 # Claude Code memory and context files
 .claude
+claude.md
 
 # macOS
 .DS_Store
