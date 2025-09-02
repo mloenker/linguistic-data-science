@@ -1,5 +1,5 @@
 {
   "DATA_DIR": "D:/files/podcasts/data",
   "MODEL": "TheChola/whisper-large-v3-turbo-german-faster-whisper",
-  "PODCAST_LIST_FILE": "top_german_podcasts.csv"
+  "PODCAST_LIST_FILE": "podcast_table.csv"
 }

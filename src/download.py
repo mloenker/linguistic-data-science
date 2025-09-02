@@ -34,18 +34,17 @@ class PodcastDownloader:
         podcasts = []
         with open(self.csv_file, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
-            next(reader)
             
             for row in reader:
-                if len(row) >= 3 and row[2].strip():
+                if len(row) >= 2 and row[1].strip():
                     name = row[0].strip()
-                    rss_feed = row[2].strip()
+                    rss_feed = row[1].strip()
                     if rss_feed:
                         podcasts.append({'name': name, 'rss_url': rss_feed})
         return podcasts
     
     def sanitize_filename(self, filename):
-        filename = re.sub(r'[<>:"/\\|?*{},]', '', filename)
+        filename = re.sub(r'[<>:"/\\|?*{},.„""]', '', filename)
         filename = filename.replace(' ', '_')
         filename = filename.lower()
         return filename[:200]
@@ -126,6 +125,8 @@ class PodcastDownloader:
         remaining_file_size = sum(ep['file_size'] for ep in remaining_episodes)
         remaining_duration = sum(int(ep['duration']) for ep in remaining_episodes)
 
+        print(f"Total remaining file size: {remaining_file_size / (1024**3):.2f} GB")
+
         lock = threading.Lock()
 
         # add tqdm
@@ -172,7 +173,7 @@ class PodcastDownloader:
 
         attempt = 0
         try:
-            with tqdm(total=ep.get('file_size', 0), unit='B', unit_scale=True, desc=f"{ep.get('podcast_name')[0:20]}: {ep.get('title','<no title>')[0:16]}", leave=False) as pbar:
+            with tqdm(total=ep.get('file_size', 0), unit='B', unit_scale=True, desc=f"{ep.get('podcast_name')[0:18]}: {ep.get('title','<no title>')[0:14]}", leave=False) as pbar:
                 while attempt < retries:
                     attempt += 1
                     with self.session.get(url, stream=True, timeout=60, headers=headers) as r:

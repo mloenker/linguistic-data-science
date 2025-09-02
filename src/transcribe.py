@@ -22,7 +22,7 @@ class PodcastTranscriber:
         self.supported_formats = {'.mp3', '.m4a', '.wav', '.flac', '.ogg'}
     
     def sanitize_filename(self, filename):
-        filename = re.sub(r'[<>:"/\\|?*{},]', '', filename)
+        filename = re.sub(r'[<>:"/\\|?*{},.„""]', '', filename)
         filename = filename.replace(' ', '_')
         filename = filename.lower()
         return filename[:200]
@@ -71,8 +71,8 @@ class PodcastTranscriber:
         estimated_duration = getattr(info, 'duration', audio_duration)
         
         episode_pbar.reset(total=round(estimated_duration / 60))
-        podcast_name = episode['metadata'].get('podcast_name', '')[:20]
-        episode_title = episode['metadata'].get('title', audio_file.stem)[:16]
+        podcast_name = episode['metadata'].get('podcast_name', '')[:18]
+        episode_title = episode['metadata'].get('title', audio_file.stem)[:14]
         episode_pbar.set_description(f"{podcast_name}: {episode_title}")
         
         last_progress_minutes = 0
