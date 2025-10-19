@@ -177,3 +177,4 @@ $RECYCLE.BIN/
 *.csv
 transcription_report.json
 priority_transcription_report.json
+outputs/
